@@ -1,0 +1,19 @@
+{
+  "name": "datalix-availability-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Datalix server availability monitor with Telegram notifications",
+  "type": "module",
+  "engines": {
+    "node": ">=20.18.1"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "check": "node src/main.js --once --dry-run",
+    "test": "node --test",
+    "healthcheck": "node src/healthcheck.js"
+  },
+  "dependencies": {
+    "cheerio": "1.2.0"
+  }
+}
