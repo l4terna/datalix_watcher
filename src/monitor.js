@@ -1,5 +1,5 @@
 import { parseProducts, parseSitemap } from './datalix.js';
-import { fetchText, mapConcurrent } from './http.js';
+import { createRandomWindowScheduler, fetchText, mapConcurrent } from './http.js';
 import { observeProducts, pruneMissingProducts, readState, writeState } from './state.js';
 import { sendTelegram } from './telegram.js';
 
@@ -23,8 +23,14 @@ export async function runCheck(config, { logger, dryRun = false, fetchImpl = fet
     pages = discoveryCache.allPages.filter((pageUrl) => !discoveryCache.emptyPages.has(pageUrl));
   }
 
+  const waitForStartSlot = createRandomWindowScheduler({
+    itemCount: pages.length,
+    windowMs: config.requestWindowSeconds * 1000,
+    minGapMs: config.minRequestGapSeconds * 1000,
+  });
   const pageResults = await mapConcurrent(pages, config.maxConcurrency, async (pageUrl) => {
     try {
+      await waitForStartSlot();
       const html = await fetchText(pageUrl, { retries: config.httpRetries, timeoutSeconds: config.httpTimeoutSeconds, logger, fetchImpl });
       const products = parseProducts(html, pageUrl);
       return { pageUrl, products };
