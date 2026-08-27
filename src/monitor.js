@@ -3,11 +3,25 @@ import { fetchText, mapConcurrent } from './http.js';
 import { observeProducts, pruneMissingProducts, readState, writeState } from './state.js';
 import { sendTelegram } from './telegram.js';
 
+const discoveryCache = {
+  allPages: [],
+  emptyPages: new Set(),
+  nextDiscoveryAt: 0,
+};
+
 export async function runCheck(config, { logger, dryRun = false, fetchImpl = fetch } = {}) {
   const state = await readState(config.stateFile);
-  const sitemap = await fetchText(config.sitemapUrl, { ...config, retries: config.httpRetries, timeoutSeconds: config.httpTimeoutSeconds, logger, fetchImpl });
-  const pages = parseSitemap(sitemap);
-  if (!pages.length) throw new Error('Sitemap contains no server product pages');
+  const discoveryDue = discoveryCache.allPages.length === 0 || Date.now() >= discoveryCache.nextDiscoveryAt;
+  let pages;
+  if (discoveryDue) {
+    const sitemap = await fetchText(config.sitemapUrl, { ...config, retries: config.httpRetries, timeoutSeconds: config.httpTimeoutSeconds, logger, fetchImpl });
+    pages = parseSitemap(sitemap);
+    if (!pages.length) throw new Error('Sitemap contains no server product pages');
+    discoveryCache.allPages = pages;
+    discoveryCache.nextDiscoveryAt = Date.now() + config.discoveryIntervalSeconds * 1000;
+  } else {
+    pages = discoveryCache.allPages.filter((pageUrl) => !discoveryCache.emptyPages.has(pageUrl));
+  }
 
   const pageResults = await mapConcurrent(pages, config.maxConcurrency, async (pageUrl) => {
     try {
@@ -33,6 +47,12 @@ export async function runCheck(config, { logger, dryRun = false, fetchImpl = fet
   });
   const failures = pageResults.length - successful.length;
   if (!successful.length) throw new Error('No Datalix product page produced a valid inventory snapshot');
+
+  if (discoveryDue) {
+    discoveryCache.emptyPages = new Set(
+      successful.filter((result) => result.products.length === 0).map((result) => result.pageUrl),
+    );
+  }
 
   const products = successful.flatMap((result) => result.products);
   if (!products.length) throw new Error('No Datalix product page produced a valid inventory snapshot');
@@ -75,6 +95,6 @@ export async function runCheck(config, { logger, dryRun = false, fetchImpl = fet
 
   const available = products.filter((product) => product.available).length;
   const emptyPages = successful.filter((result) => result.products.length === 0).length;
-  logger.info('Datalix check completed', { pages: successful.length, emptyPages, failures, products: products.length, available, pruned: pruned.length, newEvents: events.length });
+  logger.info('Datalix check completed', { discovery: discoveryDue, pages: successful.length, emptyPages, failures, products: products.length, available, pruned: pruned.length, newEvents: events.length });
   return { pages: successful.length, failures, products, events, pending: state.outbox.length };
 }
