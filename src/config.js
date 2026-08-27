@@ -29,7 +29,7 @@ export function loadConfig(env = process.env, { requireTelegram = true } = {}) {
     telegramBotToken,
     telegramChatId,
     checkIntervalSeconds: integer(env, 'CHECK_INTERVAL_SECONDS', 60, { min: 30, max: 3600 }),
-    confirmationsRequired: integer(env, 'CONFIRMATIONS_REQUIRED', 2, { min: 1, max: 10 }),
+    confirmationsRequired: integer(env, 'CONFIRMATIONS_REQUIRED', 1, { min: 1, max: 10 }),
     httpTimeoutSeconds: integer(env, 'HTTP_TIMEOUT_SECONDS', 15, { min: 3, max: 60 }),
     httpRetries: integer(env, 'HTTP_RETRIES', 2, { min: 0, max: 5 }),
     maxConcurrency: integer(env, 'MAX_CONCURRENCY', 3, { min: 1, max: 10 }),
