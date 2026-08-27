@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { emptyState, observeProducts } from '../src/state.js';
+import { emptyState, observeProducts, pruneMissingProducts } from '../src/state.js';
 
 const product = (available, name = 'KVM Server M') => ({
   key: `/rent-xeon-kvm-server|${name.toLowerCase()}`,
@@ -31,4 +31,27 @@ test('announces a newly added available server after confirmation', () => {
   const events = observeProducts(state, [product(true, 'Brand New')], { ...options, now: '2026-01-01T00:02:00Z' });
   assert.equal(events.length, 1);
   assert.equal(events[0].kind, 'new');
+});
+
+test('prunes a product only after repeated absence on its successful page', () => {
+  const state = emptyState();
+  observeProducts(state, [product(false)], {
+    confirmationsRequired: 1, notifyOnStartup: false, now: '2026-01-01T00:00:00Z',
+  });
+  const page = ['https://datalix.eu/rent-xeon-kvm-server'];
+  assert.deepEqual(pruneMissingProducts(state, [], page, 3), []);
+  assert.deepEqual(pruneMissingProducts(state, [], page, 3), []);
+  const removed = pruneMissingProducts(state, [], page, 3);
+  assert.equal(removed.length, 1);
+  assert.equal(Object.keys(state.products).length, 0);
+});
+
+test('does not prune a missing product when its page did not produce a valid snapshot', () => {
+  const state = emptyState();
+  observeProducts(state, [product(false)], {
+    confirmationsRequired: 1, notifyOnStartup: false, now: '2026-01-01T00:00:00Z',
+  });
+  pruneMissingProducts(state, [], [], 3);
+  assert.equal(Object.keys(state.products).length, 1);
+  assert.equal(state.products[product(false).key].missingCount, undefined);
 });

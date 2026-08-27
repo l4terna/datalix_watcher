@@ -1,6 +1,6 @@
 import { parseProducts, parseSitemap } from './datalix.js';
 import { fetchText, mapConcurrent } from './http.js';
-import { observeProducts, readState, writeState } from './state.js';
+import { observeProducts, pruneMissingProducts, readState, writeState } from './state.js';
 import { sendTelegram } from './telegram.js';
 
 export async function runCheck(config, { logger, dryRun = false, fetchImpl = fetch } = {}) {
@@ -36,6 +36,20 @@ export async function runCheck(config, { logger, dryRun = false, fetchImpl = fet
 
   const products = successful.flatMap((result) => result.products);
   if (!products.length) throw new Error('No Datalix product page produced a valid inventory snapshot');
+  const populatedPageUrls = successful
+    .filter((result) => result.products.length > 0)
+    .map((result) => result.pageUrl);
+  const pruned = pruneMissingProducts(
+    state,
+    products,
+    populatedPageUrls,
+    config.missingChecksBeforePrune,
+  );
+  if (pruned.length) {
+    logger.info('Pruned products missing from consecutive successful checks', {
+      products: pruned.map(({ key, name }) => ({ key, name })),
+    });
+  }
   const now = new Date().toISOString();
   const events = observeProducts(state, products, {
     confirmationsRequired: config.confirmationsRequired,
@@ -61,6 +75,6 @@ export async function runCheck(config, { logger, dryRun = false, fetchImpl = fet
 
   const available = products.filter((product) => product.available).length;
   const emptyPages = successful.filter((result) => result.products.length === 0).length;
-  logger.info('Datalix check completed', { pages: successful.length, emptyPages, failures, products: products.length, available, newEvents: events.length });
+  logger.info('Datalix check completed', { pages: successful.length, emptyPages, failures, products: products.length, available, pruned: pruned.length, newEvents: events.length });
   return { pages: successful.length, failures, products, events, pending: state.outbox.length };
 }

@@ -32,6 +32,25 @@ export async function writeState(filename, state) {
   await fs.rename(temporary, filename);
 }
 
+export function pruneMissingProducts(state, observedProducts, successfulPageUrls, checksBeforePrune) {
+  const observedKeys = new Set(observedProducts.map((product) => product.key));
+  const eligiblePages = new Set(successfulPageUrls);
+  const removed = [];
+
+  for (const [key, product] of Object.entries(state.products)) {
+    if (!eligiblePages.has(product.pageUrl) || observedKeys.has(key)) continue;
+    const missingCount = (product.missingCount || 0) + 1;
+    if (missingCount >= checksBeforePrune) {
+      removed.push(product);
+      delete state.products[key];
+    } else {
+      state.products[key] = { ...product, missingCount };
+    }
+  }
+
+  return removed;
+}
+
 function eventId(product, observedAt) {
   return `${observedAt}:${product.key}`;
 }
